@@ -55,7 +55,7 @@ Tesla validates your developer registration by reading a hosted public key from 
    * Select the **Authorization Code** and **Client Credentials** flows.
    * **Allowed Origin URL(s)**: Enter your GitHub Pages domain (e.g., `https://<yourname>.github.io`). **Note**: This must be a secure public domain hosting your public key; localhost is not allowed by Tesla here.
    * **Redirect URI(s)**: Enter your redirect callback URL. For personal CLI scripts, standard redirect URLs like `http://localhost:8080/callback` or `https://auth.tesla.com/void/callback` are completely fine here.
-   * Note down your generated **Client ID**, **Client Secret**, and **Redirect URI**.
+   * Note your generated **Client ID**, **Client Secret**, and **Redirect URI** will be used in the next step so keep them handy.
 
 ### Step 3: Configure the Local Environment Variables
 1. Copy the example environment template to create a local `.env` file:
