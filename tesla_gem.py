@@ -314,43 +314,139 @@ def main():
         ts = str(v_data['vehicle_state']['timestamp'])
         odo = str(v_data['vehicle_state']['odometer'])
         
-        # Consolidate odometer history:
-        # Keep only the earliest reading in each historical month, plus the single current/most-recent reading.
-        odometer_history[ts] = odo
-        new_odo_history = {}
-        entries = []
-        for k, v in odometer_history.items():
+        def parse_key_to_datetime(k):
+            k = k.strip()
+            if ' (' in k:
+                parts = k.split(' (')[0].strip()
+                if ' ' in parts:
+                    try:
+                        return datetime.strptime(parts, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass
+                try:
+                    return datetime.strptime(parts, "%Y-%m-%d")
+                except ValueError:
+                    pass
             try:
                 val = float(k)
                 if val > 3 * 10**9:
                     val = val / 1000.0
-                dt_entry = datetime.fromtimestamp(val)
-                entries.append((dt_entry, k, v))
+                return datetime.fromtimestamp(val)
             except Exception:
-                new_odo_history[k] = v
+                return datetime.now()
 
-        if entries:
-            entries.sort(key=lambda x: x[0])
-            groups = {}
-            for dt_entry, k, v in entries:
-                ym = (dt_entry.year, dt_entry.month)
-                if ym not in groups:
-                    groups[ym] = []
-                groups[ym].append((dt_entry, k, v))
+        # Parse all existing entries
+        raw_entries = []
+        for k, v in odometer_history.items():
+            # Skip baseline calculations to prevent old calculations from corrupting fresh interpolation
+            if 'Baseline' in k:
+                continue
+            dt_entry = parse_key_to_datetime(k)
+            try:
+                val = float(v)
+                raw_entries.append((dt_entry, val))
+            except Exception:
+                continue
+
+        # Add the newly fetched current reading
+        try:
+            new_ts_val = float(ts)
+            if new_ts_val > 3 * 10**9:
+                new_ts_val = new_ts_val / 1000.0
+            current_dt = datetime.fromtimestamp(new_ts_val)
+        except Exception:
+            current_dt = datetime.now()
             
-            sorted_ym = sorted(groups.keys())
-            for i, ym in enumerate(sorted_ym):
-                month_entries = groups[ym]
-                earliest = month_entries[0]
-                new_odo_history[earliest[1]] = earliest[2]
-                
-                # If it's the current/active month:
-                if i == len(sorted_ym) - 1:
-                    latest = month_entries[-1]
-                    if latest[1] != earliest[1]:
-                        new_odo_history[latest[1]] = latest[2]
+        try:
+            current_odo = float(odo)
+            raw_entries.append((current_dt, current_odo))
+        except Exception:
+            pass
 
-            odometer_history = new_odo_history
+        # Deduplicate raw entries by local date (YYYY-MM-DD)
+        # Keep only the latest reading on any given day
+        raw_entries.sort(key=lambda x: x[0])
+        daily_groups = {}
+        for dt_val, odo_val in raw_entries:
+            date_str = dt_val.strftime("%Y-%m-%d")
+            daily_groups[date_str] = (dt_val, odo_val)
+            
+        deduped_raw = sorted(daily_groups.values(), key=lambda x: x[0])
+
+        # Generate 1st-of-the-month baselines via linear interpolation
+        baselines = []
+        if len(deduped_raw) >= 2:
+            earliest_dt = deduped_raw[0][0]
+            latest_dt = deduped_raw[-1][0]
+            
+            # Start from the month after the earliest reading's month, up to the latest reading's month
+            curr_year = earliest_dt.year
+            curr_month = earliest_dt.month
+            
+            curr_month += 1
+            if curr_month > 12:
+                curr_month = 1
+                curr_year += 1
+                
+            while datetime(curr_year, curr_month, 1) <= latest_dt:
+                target_dt = datetime(curr_year, curr_month, 1)
+                
+                # Check if we have an exact raw reading on the 1st of this month
+                exact_reading = None
+                for dt_val, odo_val in deduped_raw:
+                    if dt_val.year == curr_year and dt_val.month == curr_month and dt_val.day == 1:
+                        exact_reading = odo_val
+                        break
+                        
+                if exact_reading is not None:
+                    baselines.append((target_dt, exact_reading, False))
+                else:
+                    # Linearly interpolate between closest raw reading before and after target_dt
+                    before = None
+                    after = None
+                    for dt_val, odo_val in deduped_raw:
+                        if dt_val < target_dt:
+                            before = (dt_val, odo_val)
+                        elif dt_val > target_dt and after is None:
+                            after = (dt_val, odo_val)
+                            break
+                            
+                    if before and after:
+                        ts_before = before[0].timestamp()
+                        ts_after = after[0].timestamp()
+                        ts_target = target_dt.timestamp()
+                        
+                        odo_before = before[1]
+                        odo_after = after[1]
+                        
+                        fraction = (ts_target - ts_before) / (ts_after - ts_before)
+                        interpolated_odo = odo_before + (odo_after - odo_before) * fraction
+                        baselines.append((target_dt, interpolated_odo, True))
+                
+                curr_month += 1
+                if curr_month > 12:
+                    curr_month = 1
+                    curr_year += 1
+
+        # Reconstruct the final sorted history dictionary
+        final_history = {}
+        for i, (dt_val, odo_val) in enumerate(deduped_raw):
+            is_current = (i == len(deduped_raw) - 1)
+            if is_current:
+                key = dt_val.strftime("%Y-%m-%d %H:%M:%S (Current Reading)")
+            else:
+                key = dt_val.strftime("%Y-%m-%d %H:%M:%S (Raw Reading)")
+            final_history[key] = f"{odo_val:.2f}"
+            
+        for target_dt, odo_val, is_estimated in baselines:
+            month_name = target_dt.strftime("%B %Y")
+            if is_estimated:
+                key = target_dt.strftime(f"%Y-%m-%d ({month_name} Start Estimated Baseline)")
+            else:
+                key = target_dt.strftime(f"%Y-%m-%d ({month_name} Start Baseline)")
+            final_history[key] = f"{odo_val:.2f}"
+            
+        odometer_history = final_history
 
         # Write Files
         with open(ODOMETER_FILE, "w") as f: json.dump(odometer_history, f, indent=4, sort_keys=True)
