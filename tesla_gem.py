@@ -313,7 +313,44 @@ def main():
 
         ts = str(v_data['vehicle_state']['timestamp'])
         odo = str(v_data['vehicle_state']['odometer'])
+        
+        # Consolidate odometer history:
+        # Keep only the earliest reading in each historical month, plus the single current/most-recent reading.
         odometer_history[ts] = odo
+        new_odo_history = {}
+        entries = []
+        for k, v in odometer_history.items():
+            try:
+                val = float(k)
+                if val > 3 * 10**9:
+                    val = val / 1000.0
+                dt_entry = datetime.fromtimestamp(val)
+                entries.append((dt_entry, k, v))
+            except Exception:
+                new_odo_history[k] = v
+
+        if entries:
+            entries.sort(key=lambda x: x[0])
+            groups = {}
+            for dt_entry, k, v in entries:
+                ym = (dt_entry.year, dt_entry.month)
+                if ym not in groups:
+                    groups[ym] = []
+                groups[ym].append((dt_entry, k, v))
+            
+            sorted_ym = sorted(groups.keys())
+            for i, ym in enumerate(sorted_ym):
+                month_entries = groups[ym]
+                earliest = month_entries[0]
+                new_odo_history[earliest[1]] = earliest[2]
+                
+                # If it's the current/active month:
+                if i == len(sorted_ym) - 1:
+                    latest = month_entries[-1]
+                    if latest[1] != earliest[1]:
+                        new_odo_history[latest[1]] = latest[2]
+
+            odometer_history = new_odo_history
 
         # Write Files
         with open(ODOMETER_FILE, "w") as f: json.dump(odometer_history, f, indent=4, sort_keys=True)
