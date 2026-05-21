@@ -5,7 +5,7 @@ import base64
 import hashlib
 import keyring
 from requests_oauthlib import OAuth2Session
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # --- SIMPLE DOTENV PARSER ---
@@ -453,6 +453,71 @@ def main():
         with open(HOME_CHARGE_FILE, "w") as f: json.dump(home_charging, f, indent=4, sort_keys=True)
         with open(SUPER_CHARGE_FILE, "w") as f: json.dump(super_charging, f, indent=4, sort_keys=True)
         with open(ALL_CHARGE_FILE, "w") as f: json.dump(all_charging, f, indent=4, sort_keys=True)
+
+        # Calculate and Output Odometer Statistics
+        if len(deduped_raw) >= 2:
+            earliest_dt, earliest_odo = deduped_raw[0]
+            latest_dt, latest_odo = deduped_raw[-1]
+            
+            total_miles = latest_odo - earliest_odo
+            total_days = (latest_dt - earliest_dt).total_seconds() / 86400.0
+            
+            if total_days > 0:
+                months_in_life = total_days / 30.4375
+                years_in_life = total_days / 365.25
+                
+                avg_monthly_lifetime = total_miles / months_in_life
+                avg_yearly_lifetime = total_miles / years_in_life
+                
+                print("\n" + "="*80)
+                print(" ODOMETER STATISTICS")
+                print("="*80)
+                print(f"Average Monthly Miles (Lifetime): {avg_monthly_lifetime:.2f} miles/month")
+                print(f"Average Yearly Miles (Lifetime):  {avg_yearly_lifetime:.2f} miles/year")
+                
+                def interpolate_odo_at_date(target_dt, raw_data):
+                    if target_dt <= raw_data[0][0]:
+                        return None
+                    if target_dt >= raw_data[-1][0]:
+                        return raw_data[-1][1]
+                    before = None
+                    after = None
+                    for dt_val, odo_val in raw_data:
+                        if dt_val <= target_dt:
+                            before = (dt_val, odo_val)
+                        elif dt_val > target_dt and after is None:
+                            after = (dt_val, odo_val)
+                            break
+                    if before and after:
+                        ts_before = before[0].timestamp()
+                        ts_after = after[0].timestamp()
+                        ts_target = target_dt.timestamp()
+                        odo_before = before[1]
+                        odo_after = after[1]
+                        fraction = (ts_target - ts_before) / (ts_after - ts_before)
+                        return odo_before + (odo_after - odo_before) * fraction
+                    return None
+
+                # 3 Months Stats (90 days)
+                t_3m = latest_dt - timedelta(days=90)
+                odo_3m = interpolate_odo_at_date(t_3m, deduped_raw)
+                if odo_3m is not None:
+                    miles_3m = latest_odo - odo_3m
+                    avg_monthly_3m = miles_3m / (90.0 / 30.4375)
+                    print(f"Average Monthly Miles (Last 3m):  {avg_monthly_3m:.2f} miles/month")
+                else:
+                    print("Average Monthly Miles (Last 3m):  Insufficient history (>90 days required)")
+
+                # 6 Months Stats (180 days)
+                t_6m = latest_dt - timedelta(days=180)
+                odo_6m = interpolate_odo_at_date(t_6m, deduped_raw)
+                if odo_6m is not None:
+                    miles_6m = latest_odo - odo_6m
+                    avg_monthly_6m = miles_6m / (180.0 / 30.4375)
+                    print(f"Average Monthly Miles (Last 6m):  {avg_monthly_6m:.2f} miles/month")
+                else:
+                    print("Average Monthly Miles (Last 6m):  Insufficient history (>180 days required)")
+                print("="*80 + "\n")
 
         print(f"Success. Savings: ${total_sc_savings:.2f}")
 
