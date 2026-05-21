@@ -53,8 +53,8 @@ Tesla validates your developer registration by reading a hosted public key from 
 2. Complete your profile registration.
 3. Create a new application project:
    * Select the **Authorization Code** and **Client Credentials** flows.
-   * **Allowed Origin URL(s)**: Enter your GitHub Pages domain (e.g. `https://<yourname>.github.io`).
-   * **Redirect URI(s)**: Enter your redirect callback URL (e.g. `https://<yourname>.github.io/callback` or `https://auth.tesla.com/void/callback`).
+   * **Allowed Origin URL(s)**: Enter your GitHub Pages domain (e.g., `https://<yourname>.github.io`). **Note**: This must be a secure public domain hosting your public key; localhost is not allowed by Tesla here.
+   * **Redirect URI(s)**: Enter your redirect callback URL. For personal CLI scripts, standard redirect URLs like `http://localhost:8080/callback` or `https://auth.tesla.com/void/callback` are completely fine here.
    * Note down your generated **Client ID**, **Client Secret**, and **Redirect URI**.
 
 ### Step 3: Configure the Local Environment Variables
@@ -66,7 +66,7 @@ Tesla validates your developer registration by reading a hosted public key from 
    ```env
    TESLA_CLIENT_ID=your_client_id_from_portal
    TESLA_CLIENT_SECRET=your_client_secret_from_portal
-   TESLA_REDIRECT_URI=https://<yourname>.github.io/callback  # Must match the redirect URI entered in the portal
+   TESLA_REDIRECT_URI=http://localhost:8080/callback  # Must match the redirect URI entered in the portal (localhost is fine here)
    TESLA_BASE_URL=https://fleet-api.prd.na.vn.cloud.tesla.com/  # North America regional endpoint (change if in EU or CN)
    TESLA_SCOPES=openid,offline_access,vehicle_device_data,vehicle_cmds,vehicle_charging_cmds
    ```
