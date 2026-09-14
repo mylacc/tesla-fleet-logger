@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import base64
@@ -6,6 +7,7 @@ import hashlib
 import keyring
 from requests_oauthlib import OAuth2Session
 from datetime import datetime, timedelta
+from dashboard_builder import generate_dashboard_html
 
 
 # --- SIMPLE DOTENV PARSER ---
@@ -33,11 +35,23 @@ TOKEN_FILE = 'tesla_token.json'
 KEYCHAIN_SERVICE = 'TeslaFleetAPI'
 KEYCHAIN_ACCOUNT = 'auth_token'
 DATA_DIR = os.getenv('TESLA_DATA_DIR', '.')
+if DATA_DIR != '.':
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception as e:
+        print(f"DEBUG: Could not access or create TESLA_DATA_DIR '{DATA_DIR}': {e}. Falling back to './data'.")
+        DATA_DIR = './data'
+        os.makedirs(DATA_DIR, exist_ok=True)
+else:
+    os.makedirs(DATA_DIR, exist_ok=True)
+
 ODOMETER_FILE = os.path.join(DATA_DIR, 'odometer_history.json')
 HOME_CHARGE_FILE = os.path.join(DATA_DIR, 'home_charge_history.json')
 SUPER_CHARGE_FILE = os.path.join(DATA_DIR, 'super_charger_charge_history.json')
 ALL_CHARGE_FILE = os.path.join(DATA_DIR, 'all_charge_history.json')
 DX_SESSIONS_CACHE_FILE = os.path.join(DATA_DIR, 'dx_sessions_cache.json')
+DASHBOARD_HTML_FILE = os.path.join(DATA_DIR, 'dashboard.html')
+INDEX_HTML_FILE = os.path.join(DATA_DIR, 'index.html')
 
 CLIENT_ID = os.getenv('TESLA_CLIENT_ID', 'ownerapi')
 CLIENT_SECRET = os.getenv('TESLA_CLIENT_SECRET', '')
@@ -88,6 +102,19 @@ def load_token():
         except Exception as e:
             print(f"DEBUG: Failed to read local token file: {e}")
     return None
+
+def delete_token():
+    try:
+        keyring.delete_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        print("DEBUG: Deleted invalid token from system keychain.")
+    except Exception as e:
+        print(f"DEBUG: Failed to delete token from system keychain: {e}")
+    if os.path.exists(TOKEN_FILE):
+        try:
+            os.remove(TOKEN_FILE)
+            print("DEBUG: Deleted local token file.")
+        except Exception:
+            pass
 
 def wake_vehicle(oauth, vehicle_id):
     """Checks if the car is online; if not, sends wake command and waits."""
@@ -519,10 +546,74 @@ def main():
                     print("Average Monthly Miles (Last 6m):  Insufficient history (>180 days required)")
                 print("="*80 + "\n")
 
+        # Calculate monthly distance driven from baselines
+        monthly_distance_map = {}
+        if 'baselines' in locals() and len(baselines) >= 2:
+            sorted_base = sorted(baselines, key=lambda x: x[0])
+            for b_idx in range(1, len(sorted_base)):
+                prev_dt, prev_odo, _ = sorted_base[b_idx - 1]
+                curr_dt, curr_odo, _ = sorted_base[b_idx]
+                m_key = prev_dt.strftime("%Y-%m")
+                monthly_distance_map[m_key] = max(0.0, curr_odo - prev_odo)
+
+        # Calculate total supercharging kWh
+        total_supercharging_kwh = sum(
+            float(fee.get('usageBase', 0.0))
+            for s in sessions
+            for fee in s.get('fees', [])
+            if fee.get('feeType') == 'CHARGING'
+        )
+
+        vehicle_info = {
+            'name': display_name,
+            'vin': vin,
+            'id': vehicle_id,
+            'state': state,
+            'last_synced': datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        }
+
+        stats_dict = {
+            'total_savings_usd': total_sc_savings,
+            'total_supercharging_kwh': total_supercharging_kwh,
+            'total_sessions_count': len(sessions),
+            'lifetime_avg_monthly': avg_monthly_lifetime if 'avg_monthly_lifetime' in locals() else 0.0,
+            'lifetime_avg_yearly': avg_yearly_lifetime if 'avg_yearly_lifetime' in locals() else 0.0,
+            'avg_monthly_3m': avg_monthly_3m if 'avg_monthly_3m' in locals() and odo_3m else 0.0,
+            'avg_monthly_6m': avg_monthly_6m if 'avg_monthly_6m' in locals() and odo_6m else 0.0,
+            'monthly_distance_map': monthly_distance_map
+        }
+
+        # Generate standalone Web Dashboard (dashboard.html and index.html for GitHub Pages)
+        generate_dashboard_html(vehicle_info, odometer_history, sessions, stats_dict, DASHBOARD_HTML_FILE)
+        generate_dashboard_html(vehicle_info, odometer_history, sessions, stats_dict, INDEX_HTML_FILE)
+
         print(f"Success. Savings: ${total_sc_savings:.2f}")
 
+        if '--serve' in sys.argv or '-s' in sys.argv:
+            import http.server
+            import socketserver
+            import webbrowser
+            PORT = 8080
+            class Handler(http.server.SimpleHTTPRequestHandler):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, directory=DATA_DIR, **kwargs)
+            print(f"\n🚀 Launching local Web Dashboard server at http://localhost:{PORT}...")
+            webbrowser.open(f"http://localhost:{PORT}/dashboard.html")
+            with socketserver.TCPServer(("", PORT), Handler) as httpd:
+                try:
+                    httpd.serve_forever()
+                except KeyboardInterrupt:
+                    print("\nServer stopped.")
+                    sys.exit(0)
+
     except Exception as e:
-        print(f"An error occurred: {e}")
+        err_str = str(e)
+        if 'login_required' in err_str or 'invalid_grant' in err_str or 'refresh_token' in err_str.lower():
+            print("\nStored authentication token has expired or is invalid.")
+            delete_token()
+            print("Cleared expired token from system keychain. Please run '.venv/bin/python tesla_gem.py' again to log in and re-authenticate.")
+        else:
+            print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

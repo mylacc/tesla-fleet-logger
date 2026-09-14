@@ -113,14 +113,27 @@ If no authenticated token is found in your system's secure keychain, the CLI wil
 > No local plaintext token files (like `tesla_token.json`) are written to disk. The tokens are encrypted at rest and protected by your operating system. Any legacy `tesla_token.json` file in the directory is automatically migrated to the secure keychain and deleted on the first run.
 
 
+### 4. Launching the Interactive Web Dashboard
+Every time the logger runs, it automatically generates a standalone, glassmorphic Web Dashboard (`dashboard.html` & `index.html`) containing interactive Chart.js graphs, mileage trends, monetary savings, and searchable session logs.
+
+To automatically start a local server and open the web dashboard in your browser:
+```bash
+python3 tesla_gem.py --serve
+```
+
+> [!SECURITY NOTE]
+> `dashboard.html` and `index.html` contain **ZERO API client secrets, tokens, or private keys**. All authentication credentials remain encrypted inside your OS Keychain, making the HTML files 100% safe to open locally or host on static sites like **GitHub Pages**.
+
 ---
 
 ## Log Files & Cache
 
-All data files are saved inside the directory specified by `TESLA_DATA_DIR` in your `.env` (defaults to the local project directory if not specified):
+All data files and generated dashboards are saved inside the directory specified by `TESLA_DATA_DIR` in your `.env` (defaults to the local project directory if not specified):
 
+- `dashboard.html` / `index.html`: Interactive web dashboard for viewing stats, charts, and session tables.
 - `dx_sessions_cache.json`: The local sessions database. Stores metadata of all historical Supercharging sessions incrementally to eliminate redundant API requests.
 - `super_charger_charge_history.json`: Daily/session records mapping timestamps to Supercharging energy added (in kWh).
 - `all_charge_history.json`: Combined daily record including all charging categories.
 - `odometer_history.json`: Historical records mapping timestamps to odometer readings.
 - `home_charge_history.json`: Local home charging logs.
+
