@@ -8,6 +8,10 @@ import keyring
 from requests_oauthlib import OAuth2Session
 from datetime import datetime, timedelta
 from dashboard_builder import generate_dashboard_html
+from efficiency import (
+    supercharger_kwh_by_month, wall_connector_kwh_by_month, log_wall_connector,
+    monthly_driving_temps, build_monthly_efficiency
+)
 
 
 # --- SIMPLE DOTENV PARSER ---
@@ -52,6 +56,15 @@ ALL_CHARGE_FILE = os.path.join(DATA_DIR, 'all_charge_history.json')
 DX_SESSIONS_CACHE_FILE = os.path.join(DATA_DIR, 'dx_sessions_cache.json')
 DASHBOARD_HTML_FILE = os.path.join(DATA_DIR, 'dashboard.html')
 INDEX_HTML_FILE = os.path.join(DATA_DIR, 'index.html')
+VEHICLE_SNAPSHOT_FILE = os.path.join(DATA_DIR, 'vehicle_snapshots.json')
+WALL_CONNECTOR_FILE = os.path.join(DATA_DIR, 'wall_connector_history.json')
+WEATHER_CACHE_FILE = os.path.join(DATA_DIR, 'monthly_weather_cache.json')
+
+# Optional: efficiency-vs-temperature chart inputs
+WALL_CONNECTOR_HOST = os.getenv('TESLA_WALL_CONNECTOR_HOST', '').strip()
+HOME_LAT = os.getenv('TESLA_HOME_LAT', '').strip()
+HOME_LON = os.getenv('TESLA_HOME_LON', '').strip()
+DRIVE_HOURS = os.getenv('TESLA_DRIVE_HOURS', '7-21').strip()
 
 CLIENT_ID = os.getenv('TESLA_CLIENT_ID', 'ownerapi')
 CLIENT_SECRET = os.getenv('TESLA_CLIENT_SECRET', '')
@@ -340,6 +353,22 @@ def main():
 
         ts = str(v_data['vehicle_state']['timestamp'])
         odo = str(v_data['vehicle_state']['odometer'])
+
+        # Snapshot of the car's own readings for this run (outside temp is in °C)
+        snapshots = load_json_file(VEHICLE_SNAPSHOT_FILE)
+        charge_state = v_data.get('charge_state', {}) or {}
+        snapshots[datetime.now().replace(microsecond=0).isoformat()] = {
+            'odometer': v_data['vehicle_state'].get('odometer'),
+            'outside_temp_c': (v_data.get('climate_state', {}) or {}).get('outside_temp'),
+            'battery_level': charge_state.get('battery_level'),
+            'usable_battery_level': charge_state.get('usable_battery_level'),
+            'charge_energy_added': charge_state.get('charge_energy_added'),
+            'charging_state': charge_state.get('charging_state'),
+        }
+        with open(VEHICLE_SNAPSHOT_FILE, "w") as f: json.dump(snapshots, f, indent=4, sort_keys=True)
+
+        if WALL_CONNECTOR_HOST:
+            log_wall_connector(WALL_CONNECTOR_HOST, WALL_CONNECTOR_FILE)
         
         def parse_key_to_datetime(k):
             k = k.strip()
@@ -556,6 +585,27 @@ def main():
                 m_key = prev_dt.strftime("%Y-%m")
                 monthly_distance_map[m_key] = max(0.0, curr_odo - prev_odo)
 
+        # Monthly efficiency (mi/kWh) against average temperature during driving hours
+        home_kwh_map = wall_connector_kwh_by_month(WALL_CONNECTOR_FILE) if WALL_CONNECTOR_HOST else {}
+        temps_map = {}
+        if HOME_LAT and HOME_LON and monthly_distance_map:
+            try:
+                hours = tuple(int(h) for h in DRIVE_HOURS.split('-', 1))
+                temps_map = monthly_driving_temps(
+                    sorted(monthly_distance_map.keys()), float(HOME_LAT), float(HOME_LON),
+                    WEATHER_CACHE_FILE, drive_hours=hours
+                )
+            except ValueError as e:
+                print(f"DEBUG: Invalid TESLA_HOME_LAT/LON or TESLA_DRIVE_HOURS: {e}")
+        monthly_efficiency = build_monthly_efficiency(
+            monthly_distance_map, supercharger_kwh_by_month(sessions), home_kwh_map,
+            temps_map, home_kwh_logged=bool(WALL_CONNECTOR_HOST)
+        )
+        efficiency_meta = {
+            'energy_source': 'Supercharger + Wall Connector kWh' if WALL_CONNECTOR_HOST else 'Supercharger kWh only (home charging not logged)',
+            'temp_source': f'Avg outdoor °F, {DRIVE_HOURS}h local, at home location' if temps_map else 'No temperature (set TESLA_HOME_LAT / TESLA_HOME_LON)',
+        }
+
         # Calculate total supercharging kWh
         total_supercharging_kwh = sum(
             float(fee.get('usageBase', 0.0))
@@ -580,7 +630,9 @@ def main():
             'lifetime_avg_yearly': avg_yearly_lifetime if 'avg_yearly_lifetime' in locals() else 0.0,
             'avg_monthly_3m': avg_monthly_3m if 'avg_monthly_3m' in locals() and odo_3m else 0.0,
             'avg_monthly_6m': avg_monthly_6m if 'avg_monthly_6m' in locals() and odo_6m else 0.0,
-            'monthly_distance_map': monthly_distance_map
+            'monthly_distance_map': monthly_distance_map,
+            'monthly_efficiency': monthly_efficiency,
+            'efficiency_meta': efficiency_meta
         }
 
         # Generate standalone Web Dashboard (dashboard.html and index.html for GitHub Pages)

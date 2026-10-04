@@ -50,3 +50,6 @@ odometer_history.json
 *.njsproj
 *.sln
 *.sw?
+vehicle_snapshots.json
+wall_connector_history.json
+monthly_weather_cache.json

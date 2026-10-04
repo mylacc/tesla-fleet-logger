@@ -113,6 +113,11 @@ def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, out
     json_dist_labels = json.dumps(dist_labels)
     json_dist_values = json.dumps(dist_values)
 
+    # 4. Monthly Efficiency vs Temperature
+    efficiency_rows = stats.get('monthly_efficiency', [])
+    efficiency_meta = stats.get('efficiency_meta', {})
+    json_efficiency = json.dumps(efficiency_rows)
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -647,6 +652,18 @@ def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, out
             </div>
         </div>
 
+        <div class="section-card" style="margin-bottom:28px;">
+            <div class="chart-header">
+                <div class="chart-title">Monthly Efficiency vs Temperature</div>
+            </div>
+            <div class="kpi-subtext" style="margin-bottom:12px;">
+                Energy: {efficiency_meta.get('energy_source', 'Supercharger kWh only')} &bull; Temperature: {efficiency_meta.get('temp_source', 'not configured')}
+            </div>
+            <div class="chart-container" style="height:300px;">
+                <canvas id="efficiencyChart"></canvas>
+            </div>
+        </div>
+
         <!-- DATA TABLES SECTION -->
         <div class="section-card">
             <div class="table-controls">
@@ -849,6 +866,78 @@ def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, out
                         type: 'linear',
                         position: 'right',
                         ticks: {{ color: '#00E676' }},
+                        grid: {{ display: false }}
+                    }}
+                }}
+            }}
+        }});
+
+        // 4. MONTHLY EFFICIENCY VS TEMPERATURE
+        const efficiencyRows = {json_efficiency};
+        const ctxEff = document.getElementById('efficiencyChart').getContext('2d');
+        new Chart(ctxEff, {{
+            type: 'bar',
+            data: {{
+                labels: efficiencyRows.map(r => r.label),
+                datasets: [
+                    {{
+                        type: 'bar',
+                        label: 'Efficiency (mi/kWh)',
+                        data: efficiencyRows.map(r => r.mi_per_kwh),
+                        backgroundColor: efficiencyRows.map(r => r.flag ? 'rgba(156, 163, 175, 0.35)' : 'rgba(0, 230, 118, 0.5)'),
+                        borderColor: efficiencyRows.map(r => r.flag ? '#9CA3AF' : '#00E676'),
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        order: 2,
+                        yAxisID: 'y'
+                    }},
+                    {{
+                        type: 'line',
+                        label: 'Avg Driving-Hours Temp (°F)',
+                        order: 1,
+                        data: efficiencyRows.map(r => r.temp_f),
+                        borderColor: '#FFB300',
+                        backgroundColor: '#FFB300',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        tension: 0.3,
+                        spanGaps: true,
+                        yAxisID: 'y1'
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{ labels: {{ color: '#F3F4F6' }} }},
+                    tooltip: {{
+                        callbacks: {{
+                            afterBody: (items) => {{
+                                const r = efficiencyRows[items[0].dataIndex];
+                                const lines = [`Miles: ${{r.miles}}`, `Supercharger: ${{r.supercharger_kwh}} kWh`];
+                                if (r.home_kwh !== null) lines.push(`Home: ${{r.home_kwh}} kWh`);
+                                if (r.flag) lines.push(`Note: ${{r.flag}}`);
+                                return lines;
+                            }}
+                        }}
+                    }}
+                }},
+                scales: {{
+                    x: {{ ticks: {{ color: '#9CA3AF' }}, grid: {{ display: false }} }},
+                    y: {{
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {{ display: true, text: 'mi/kWh', color: '#00E676' }},
+                        ticks: {{ color: '#9CA3AF' }},
+                        grid: {{ color: 'rgba(255,255,255,0.05)' }}
+                    }},
+                    y1: {{
+                        type: 'linear',
+                        position: 'right',
+                        title: {{ display: true, text: '°F', color: '#FFB300' }},
+                        ticks: {{ color: '#FFB300' }},
                         grid: {{ display: false }}
                     }}
                 }}
