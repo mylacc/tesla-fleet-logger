@@ -124,6 +124,14 @@ python3 tesla_gem.py --serve
 > [!SECURITY NOTE]
 > `dashboard.html` and `index.html` contain **ZERO API client secrets, tokens, or private keys**. All authentication credentials remain encrypted inside your OS Keychain, making the HTML files 100% safe to open locally or host on static sites like **GitHub Pages**.
 
+### 5. Monthly Efficiency vs Temperature Chart
+The dashboard plots monthly **mi/kWh** (miles from the odometer baselines divided by charging energy) against the **average outdoor temperature during driving hours** at your home location.
+
+- **Temperature** comes from the free [Open-Meteo historical archive](https://open-meteo.com/en/docs/historical-weather-api) (no API key). Set `TESLA_HOME_LAT` and `TESLA_HOME_LON` in `.env`; optionally narrow the hours averaged with `TESLA_DRIVE_HOURS` (default `7-21`). Finished months are cached in `monthly_weather_cache.json`.
+- **Energy** is Supercharger kWh from the charging history. Home charging is not available from the Fleet API, so if you charge at home the efficiency is overstated unless you set `TESLA_WALL_CONNECTOR_HOST` to a Gen 3 Wall Connector on your LAN; its lifetime energy counter is then logged every run and monthly home kWh is added from the month after logging starts.
+- Months with no logged charging energy, or an implausible result above 6 mi/kWh, are greyed out and noted in the tooltip.
+- Charging energy is measured at the charger, so the figure includes charging losses, and energy charged at the end of one month for the next month's driving lands in the earlier month.
+
 ---
 
 ## Log Files & Cache
@@ -136,4 +144,7 @@ All data files and generated dashboards are saved inside the directory specified
 - `all_charge_history.json`: Combined daily record including all charging categories.
 - `odometer_history.json`: Historical records mapping timestamps to odometer readings.
 - `home_charge_history.json`: Local home charging logs.
+- `vehicle_snapshots.json`: Per-run snapshot of odometer, outside temperature (°C), battery level and last charge energy added.
+- `wall_connector_history.json`: Wall Connector lifetime energy readings (only when `TESLA_WALL_CONNECTOR_HOST` is set).
+- `monthly_weather_cache.json`: Cached monthly driving-hours temperatures.
 
