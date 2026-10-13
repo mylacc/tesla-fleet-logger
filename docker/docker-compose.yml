@@ -1,0 +1,15 @@
+# Serves the dashboard that tesla_gem.py writes to TESLA_DATA_DIR, from the Synology.
+# In Container Manager: Project -> Create, path /volume1/docker/tesla-dashboard,
+# with this file and serve.py next to it. Dashboard: http://<nas-ip>:8095
+services:
+  tesla-dashboard:
+    image: python:3.12-alpine
+    container_name: tesla-dashboard
+    restart: unless-stopped
+    command: ["python", "-u", "/app/serve.py"]
+    ports:
+      - "8095:8080"
+    volumes:
+      # The NAS path of TESLA_DATA_DIR (the "home" share's Code folder on the Mac).
+      - /volume1/homes/YOUR_DSM_USER/Code:/data:ro
+      - ./serve.py:/app/serve.py:ro

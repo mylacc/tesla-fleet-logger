@@ -4,7 +4,7 @@ from datetime import datetime
 
 def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, output_path="dashboard.html"):
     """
-    Generates a standalone, ultra-premium, responsive Web Dashboard HTML file.
+    Generates a standalone, responsive dashboard HTML file styled with shadcn/ui tokens.
     SECURITY GUARANTEE: Contains ZERO API client secrets, tokens, or private keys.
     """
     
@@ -118,625 +118,335 @@ def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, out
     efficiency_meta = stats.get('efficiency_meta', {})
     json_efficiency = json.dumps(efficiency_rows)
 
+    current_odo = float(odometer_history.get(current_point['label'], 0) if current_point else 0)
+    state_label = str(vehicle_info.get('state', 'online')).capitalize()
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tesla Fleet Logger Dashboard - {vehicle_info.get('name', 'Vehicle')}</title>
-    <!-- Google Fonts -->
+    <title>{vehicle_info.get('name', 'Vehicle')} Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
+        /* shadcn/ui "zinc" theme tokens */
         :root {{
-            --bg-dark: #090A0F;
-            --bg-card: rgba(22, 25, 35, 0.75);
-            --border-card: rgba(255, 255, 255, 0.08);
-            --border-card-hover: rgba(232, 33, 39, 0.3);
-            --accent-red: #E82127;
-            --accent-red-glow: rgba(232, 33, 39, 0.25);
-            --accent-cyan: #00F0FF;
-            --accent-cyan-glow: rgba(0, 240, 255, 0.2);
-            --accent-green: #00E676;
-            --accent-amber: #FFB300;
-            --text-primary: #F3F4F6;
-            --text-secondary: #9CA3AF;
-            --text-muted: #6B7280;
-            --radius-lg: 16px;
-            --radius-md: 12px;
-            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-display: 'Outfit', sans-serif;
+            --background: #ffffff;
+            --foreground: #09090b;
+            --card: #ffffff;
+            --card-foreground: #09090b;
+            --popover: #ffffff;
+            --primary: #18181b;
+            --primary-foreground: #fafafa;
+            --secondary: #f4f4f5;
+            --secondary-foreground: #18181b;
+            --muted: #f4f4f5;
+            --muted-foreground: #71717a;
+            --border: #e4e4e7;
+            --input: #e4e4e7;
+            --ring: #a1a1aa;
+            --radius: 0.625rem;
+            /* Chart series, validated for colour-blind separation on both surfaces */
+            --chart-1: #2563eb;
+            --chart-2: #0d9488;
+            --chart-3: #d97706;
+            --chart-flagged: #a1a1aa;
         }}
-
-        * {{
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }}
-
-        body {{
-            background-color: var(--bg-dark);
-            background-image: 
-                radial-gradient(circle at 15% 15%, rgba(232, 33, 39, 0.08) 0%, transparent 40%),
-                radial-gradient(circle at 85% 85%, rgba(0, 240, 255, 0.06) 0%, transparent 40%);
-            color: var(--text-primary);
-            font-family: var(--font-main);
-            min-height: 100vh;
-            padding: 24px;
-            line-height: 1.5;
-        }}
-
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-        }}
-
-        /* --- HEADER & HERO --- */
-        header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border-card);
-            border-radius: var(--radius-lg);
-            padding: 24px 32px;
-            margin-bottom: 28px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }}
-
-        .brand {{
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }}
-
-        .tesla-logo {{
-            width: 42px;
-            height: 42px;
-            background: linear-gradient(135deg, #E82127 0%, #B71C1C 100%);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 20px var(--accent-red-glow);
-        }}
-
-        .tesla-logo svg {{
-            width: 24px;
-            height: 24px;
-            fill: #FFFFFF;
-        }}
-
-        .brand-title h1 {{
-            font-family: var(--font-display);
-            font-size: 26px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            color: #FFFFFF;
-        }}
-
-        .brand-title p {{
-            font-size: 13px;
-            color: var(--text-secondary);
-        }}
-
-        .status-badge {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(0, 230, 118, 0.1);
-            border: 1px solid rgba(0, 230, 118, 0.25);
-            color: var(--accent-green);
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-
-        .status-dot {{
-            width: 8px;
-            height: 8px;
-            background-color: var(--accent-green);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--accent-green);
-            animation: pulse 2s infinite;
-        }}
-
-        @keyframes pulse {{
-            0% {{ opacity: 1; transform: scale(1); }}
-            50% {{ opacity: 0.4; transform: scale(1.2); }}
-            100% {{ opacity: 1; transform: scale(1); }}
-        }}
-
-        /* --- KPI GRID --- */
-        .kpi-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 28px;
-        }}
-
-        .kpi-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border-card);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        }}
-
-        .kpi-card:hover {{
-            border-color: var(--border-card-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(232, 33, 39, 0.12);
-        }}
-
-        .kpi-card::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--accent-red), transparent);
-        }}
-
-        .kpi-card.cyan::before {{
-            background: linear-gradient(90deg, var(--accent-cyan), transparent);
-        }}
-
-        .kpi-card.green::before {{
-            background: linear-gradient(90deg, var(--accent-green), transparent);
-        }}
-
-        .kpi-card.amber::before {{
-            background: linear-gradient(90deg, var(--accent-amber), transparent);
-        }}
-
-        .kpi-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }}
-
-        .kpi-title {{
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-
-        .kpi-icon {{
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.05);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }}
-
-        .kpi-icon svg {{
-            width: 20px;
-            height: 20px;
-            fill: var(--text-primary);
-        }}
-
-        .kpi-value {{
-            font-family: var(--font-display);
-            font-size: 34px;
-            font-weight: 700;
-            color: #FFFFFF;
-            margin-bottom: 4px;
-            letter-spacing: -0.5px;
-        }}
-
-        .kpi-subtext {{
-            font-size: 13px;
-            color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }}
-
-        .highlight-green {{
-            color: var(--accent-green);
-            font-weight: 600;
-        }}
-
-        .highlight-cyan {{
-            color: var(--accent-cyan);
-            font-weight: 600;
-        }}
-
-        /* --- CHARTS SECTION --- */
-        .charts-grid {{
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 24px;
-            margin-bottom: 28px;
-        }}
-
-        @media (max-width: 1024px) {{
-            .charts-grid {{
-                grid-template-columns: 1fr;
+        @media (prefers-color-scheme: dark) {{
+            :root {{
+                --background: #09090b;
+                --foreground: #fafafa;
+                --card: #09090b;
+                --card-foreground: #fafafa;
+                --popover: #18181b;
+                --primary: #fafafa;
+                --primary-foreground: #18181b;
+                --secondary: #27272a;
+                --secondary-foreground: #fafafa;
+                --muted: #27272a;
+                --muted-foreground: #a1a1aa;
+                --border: #27272a;
+                --input: #27272a;
+                --ring: #52525b;
+                --chart-1: #3b82f6;
+                --chart-flagged: #52525b;
             }}
         }}
 
-        .chart-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border-card);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+        body {{
+            background: var(--background);
+            color: var(--foreground);
+            font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }}
 
-        .chart-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }}
+        .container {{ max-width: 1280px; margin: 0 auto; padding: 32px 16px 24px; }}
+        @media (min-width: 768px) {{ .container {{ padding: 40px 32px 24px; }} }}
 
-        .chart-title {{
-            font-family: var(--font-display);
-            font-size: 18px;
-            font-weight: 600;
-            color: #FFFFFF;
-        }}
+        .tabular {{ font-variant-numeric: tabular-nums; }}
 
-        .chart-container {{
-            position: relative;
-            width: 100%;
-            height: 320px;
+        /* Header */
+        header {{
+            display: flex; justify-content: space-between; align-items: flex-start;
+            gap: 16px; flex-wrap: wrap; margin-bottom: 24px;
         }}
+        header h1 {{ font-size: 30px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; }}
+        header p {{ color: var(--muted-foreground); margin-top: 4px; }}
 
-        /* --- DATA TABLES --- */
-        .section-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border-card);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            margin-bottom: 28px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        }}
-
-        .table-controls {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            gap: 16px;
-            flex-wrap: wrap;
-        }}
-
-        .tabs {{
-            display: flex;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 4px;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }}
-
-        .tab-btn {{
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            padding: 8px 18px;
-            font-size: 13px;
-            font-weight: 600;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }}
-
-        .tab-btn.active {{
-            background: var(--accent-red);
-            color: #FFFFFF;
-            box-shadow: 0 0 15px var(--accent-red-glow);
-        }}
-
-        .search-box {{
-            position: relative;
-            min-width: 260px;
-        }}
-
-        .search-box input {{
-            width: 100%;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            padding: 8px 14px 8px 36px;
-            color: var(--text-primary);
-            font-size: 13px;
-            outline: none;
-            transition: border-color 0.2s ease;
-        }}
-
-        .search-box input:focus {{
-            border-color: var(--accent-red);
-        }}
-
-        .search-box svg {{
-            position: absolute;
-            left: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 16px;
-            height: 16px;
-            fill: var(--text-muted);
-        }}
-
-        .table-wrapper {{
-            overflow-x: auto;
-            border-radius: var(--radius-md);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }}
-
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-            font-size: 13px;
-        }}
-
-        th {{
-            background: rgba(0, 0, 0, 0.4);
-            color: var(--text-secondary);
-            font-weight: 600;
-            padding: 14px 18px;
-            border-bottom: 1px solid var(--border-card);
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-        }}
-
-        td {{
-            padding: 14px 18px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-            color: var(--text-primary);
-        }}
-
-        tr:hover td {{
-            background: rgba(255, 255, 255, 0.02);
-        }}
-
+        /* Badge */
         .badge {{
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px;
+            border-radius: calc(var(--radius) - 2px);
+            border: 1px solid transparent;
+            padding: 2px 8px; font-size: 12px; font-weight: 500; white-space: nowrap;
         }}
+        .badge-outline {{ border-color: var(--border); color: var(--foreground); }}
+        .badge-secondary {{ background: var(--secondary); color: var(--secondary-foreground); }}
+        .dot {{ width: 6px; height: 6px; border-radius: 50%; background: var(--chart-2); }}
 
-        .badge-free {{
-            background: rgba(0, 230, 118, 0.15);
-            color: var(--accent-green);
-            border: 1px solid rgba(0, 230, 118, 0.3);
+        /* Card */
+        .card {{
+            background: var(--card); color: var(--card-foreground);
+            border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }}
+        .card-header {{ padding: 24px 24px 0; }}
+        .card-title {{ font-size: 16px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }}
+        .card-description {{ color: var(--muted-foreground); font-size: 14px; margin-top: 4px; }}
+        .card-content {{ padding: 24px; }}
 
-        .badge-raw {{
-            background: rgba(232, 33, 39, 0.15);
-            color: var(--accent-red);
-            border: 1px solid rgba(232, 33, 39, 0.3);
-        }}
+        .grid {{ display: grid; gap: 16px; margin-bottom: 16px; }}
+        .grid-kpi {{ grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
+        .grid-charts {{ grid-template-columns: 1fr; }}
+        @media (min-width: 1024px) {{ .grid-charts {{ grid-template-columns: 3fr 2fr; }} }}
 
-        .badge-baseline {{
-            background: rgba(0, 240, 255, 0.15);
-            color: var(--accent-cyan);
-            border: 1px solid rgba(0, 240, 255, 0.3);
-        }}
+        /* KPI card */
+        .kpi {{ padding: 24px; }}
+        .kpi-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }}
+        .kpi-title {{ font-size: 14px; font-weight: 500; }}
+        .kpi-head svg {{ width: 16px; height: 16px; color: var(--muted-foreground); }}
+        .kpi-value {{ font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }}
+        .kpi-value small {{ font-size: 14px; font-weight: 500; color: var(--muted-foreground); }}
+        .kpi-sub {{ font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }}
 
-        /* --- FOOTER --- */
-        footer {{
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 12px;
-            padding: 20px 0;
-            border-top: 1px solid var(--border-card);
+        .chart-box {{ position: relative; width: 100%; height: 300px; }}
+        .chart-box.short {{ height: 160px; }}
+        .chart-label {{ font-size: 12px; font-weight: 500; color: var(--muted-foreground); margin: 0 0 8px; }}
+        .chart-label + .chart-box {{ margin-bottom: 16px; }}
+
+        /* Legend */
+        .legend {{ display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted-foreground); margin-top: 12px; }}
+        .legend span {{ display: inline-flex; align-items: center; gap: 6px; }}
+        .swatch {{ width: 10px; height: 10px; border-radius: 2px; }}
+        .swatch.dashed {{ height: 0; border-top: 2px dashed var(--chart-2); border-radius: 0; }}
+
+        /* Tabs */
+        .toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }}
+        .tabs-list {{
+            display: inline-flex; align-items: center; height: 36px; padding: 3px;
+            background: var(--muted); color: var(--muted-foreground); border-radius: var(--radius);
+            max-width: 100%; overflow-x: auto;
         }}
+        .tabs-trigger {{
+            height: 100%; padding: 0 12px; border: 1px solid transparent; background: transparent;
+            border-radius: calc(var(--radius) - 2px); font: inherit; font-size: 14px; font-weight: 500;
+            color: inherit; cursor: pointer; white-space: nowrap;
+        }}
+        .tabs-trigger[aria-selected="true"] {{
+            background: var(--background); color: var(--foreground);
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        }}
+        @media (prefers-color-scheme: dark) {{
+            .tabs-trigger[aria-selected="true"] {{ background: var(--input); border-color: var(--input); }}
+        }}
+        .tabs-trigger:focus-visible, .input:focus-visible {{ outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }}
+
+        /* Input */
+        .input {{
+            height: 36px; width: 100%; max-width: 280px; padding: 4px 12px;
+            border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+            background: transparent; color: var(--foreground); font: inherit; font-size: 14px;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        }}
+        .input::placeholder {{ color: var(--muted-foreground); }}
+
+        /* Table */
+        .table-wrap {{ overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }}
+        th {{ height: 40px; padding: 0 12px; font-weight: 500; color: var(--muted-foreground); white-space: nowrap; border-bottom: 1px solid var(--border); }}
+        td {{ padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }}
+        tbody tr:last-child td {{ border-bottom: 0; }}
+        tbody tr:hover td {{ background: color-mix(in srgb, var(--muted) 50%, transparent); }}
+        .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+        .strong {{ font-weight: 500; }}
+
+        footer {{ color: var(--muted-foreground); font-size: 12px; text-align: center; padding: 24px 0 8px; }}
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- HEADER -->
         <header>
-            <div class="brand">
-                <div class="tesla-logo">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-1.82.62-3.49 1.66-4.83l12.17 12.17C16.49 20.38 14.32 21 12 21zm6.34-3.17L6.17 5.66C7.51 4.62 9.18 4 11 4c4.97 0 9 4.03 9 9 0 1.82-.62 3.49-1.66 4.83z"/>
-                    </svg>
-                </div>
-                <div class="brand-title">
-                    <h1>{vehicle_info.get('name', 'Tesla Vehicle')} Log Dashboard</h1>
-                    <p>VIN: {vehicle_info.get('vin', 'N/A')} &bull; Last Synced: {vehicle_info.get('last_synced', 'Just now')}</p>
-                </div>
+            <div>
+                <h1>{vehicle_info.get('name', 'Tesla Vehicle')}</h1>
+                <p>VIN {vehicle_info.get('vin', 'N/A')} &middot; Last synced {vehicle_info.get('last_synced', 'just now')}</p>
             </div>
-            <div class="status-badge">
-                <div class="status-dot"></div>
-                {vehicle_info.get('state', 'ONLINE')}
-            </div>
+            <span class="badge badge-outline"><span class="dot"></span>{state_label}</span>
         </header>
 
-        <!-- KPI GRID -->
-        <div class="kpi-grid">
-            <div class="kpi-card green">
-                <div class="kpi-header">
-                    <span class="kpi-title">Free Supercharging Savings</span>
-                    <div class="kpi-icon">
-                        <svg viewBox="0 0 24 24"><path fill="#00E676" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+        <div class="grid grid-kpi">
+            <div class="card kpi">
+                <div class="kpi-head">
+                    <span class="kpi-title">Free Supercharging savings</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div class="kpi-value tabular">${stats.get('total_savings_usd', 0.0):,.2f}</div>
+                <div class="kpi-sub">Across {stats.get('total_supercharging_kwh', 0.0):,.1f} kWh of free energy</div>
+            </div>
+            <div class="card kpi">
+                <div class="kpi-head">
+                    <span class="kpi-title">Odometer</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                </div>
+                <div class="kpi-value tabular">{current_odo:,.0f} <small>mi</small></div>
+                <div class="kpi-sub">Lifetime average {stats.get('lifetime_avg_monthly', 0.0):,.0f} mi/mo ({stats.get('lifetime_avg_yearly', 0.0):,.0f} mi/yr)</div>
+            </div>
+            <div class="card kpi">
+                <div class="kpi-head">
+                    <span class="kpi-title">3-month pace</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                </div>
+                <div class="kpi-value tabular">{stats.get('avg_monthly_3m', 0.0):,.0f} <small>mi/mo</small></div>
+                <div class="kpi-sub">Rolling average, last 90 days</div>
+            </div>
+            <div class="card kpi">
+                <div class="kpi-head">
+                    <span class="kpi-title">6-month pace</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </div>
+                <div class="kpi-value tabular">{stats.get('avg_monthly_6m', 0.0):,.0f} <small>mi/mo</small></div>
+                <div class="kpi-sub">Rolling average, last 180 days</div>
+            </div>
+        </div>
+
+        <div class="grid grid-charts">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Odometer</div>
+                    <div class="card-description">Recorded readings and 1st-of-month baselines, in miles</div>
+                </div>
+                <div class="card-content">
+                    <div class="chart-box"><canvas id="odoChart"></canvas></div>
+                    <div class="legend">
+                        <span><i class="swatch" style="background:var(--chart-1)"></i>Readings</span>
+                        <span><i class="swatch dashed"></i>Monthly baselines</span>
                     </div>
                 </div>
-                <div class="kpi-value">${stats.get('total_savings_usd', 0.0):,.2f}</div>
-                <div class="kpi-subtext">Saved across <span class="highlight-green">{stats.get('total_supercharging_kwh', 0.0):,.1f} kWh</span> of free energy</div>
             </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Miles driven</div>
+                    <div class="card-description">Per month</div>
+                </div>
+                <div class="card-content">
+                    <div class="chart-box"><canvas id="distChart"></canvas></div>
+                </div>
+            </div>
+        </div>
 
-            <div class="kpi-card red">
-                <div class="kpi-header">
-                    <span class="kpi-title">Current Odometer</span>
-                    <div class="kpi-icon">
-                        <svg viewBox="0 0 24 24"><path fill="#E82127" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <div class="grid">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Free Supercharging</div>
+                    <div class="card-description">Energy added per month, in kWh. Hover a month for its savings.</div>
+                </div>
+                <div class="card-content">
+                    <div class="chart-box" style="height:260px;"><canvas id="chargingChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Efficiency vs temperature</div>
+                    <div class="card-description">Energy: {efficiency_meta.get('energy_source', 'Supercharger kWh only')} &middot; Temperature: {efficiency_meta.get('temp_source', 'not configured')}</div>
+                </div>
+                <div class="card-content">
+                    <div class="chart-label">Efficiency (mi/kWh). Grey months are flagged as incomplete; hover for details.</div>
+                    <div class="chart-box" style="height:220px;"><canvas id="efficiencyChart"></canvas></div>
+                    <div class="chart-label">Average driving-hours temperature (°F)</div>
+                    <div class="chart-box short"><canvas id="tempChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-content">
+                <div class="toolbar">
+                    <div class="tabs-list" role="tablist">
+                        <button class="tabs-trigger" role="tab" aria-selected="true" data-tab="sessionsTab">Supercharging sessions ({len(parsed_sessions)})</button>
+                        <button class="tabs-trigger" role="tab" aria-selected="false" data-tab="odometerTab">Odometer log ({len(parsed_odo)})</button>
                     </div>
+                    <input class="input" type="search" id="searchInput" placeholder="Search sessions or dates..." oninput="filterTables()">
                 </div>
-                <div class="kpi-value">{float(odometer_history.get(current_point['label'], 0) if current_point else 0):,.1f} <span style="font-size:18px;">mi</span></div>
-                <div class="kpi-subtext">Lifetime average: <span class="highlight-green">{stats.get('lifetime_avg_monthly', 0.0):,.1f} mi/mo</span> ({stats.get('lifetime_avg_yearly', 0.0):,.0f} mi/yr)</div>
-            </div>
 
-            <div class="kpi-card cyan">
-                <div class="kpi-header">
-                    <span class="kpi-title">3-Month Driving Pace</span>
-                    <div class="kpi-icon">
-                        <svg viewBox="0 0 24 24"><path fill="#00F0FF" d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
-                    </div>
+                <div id="sessionsTab" class="table-wrap">
+                    <table id="sessionsTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Station</th>
+                                <th class="num">Energy</th>
+                                <th class="num">Rate</th>
+                                <th class="num">Saved</th>
+                                <th>Pricing</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join([f'''<tr>
+                                <td class="strong tabular">{s['date_formatted']}</td>
+                                <td>{s['site']}</td>
+                                <td class="num">{s['energy_kwh']} kWh</td>
+                                <td class="num">${s['rate_usd']:.3f}/kWh</td>
+                                <td class="num strong">${s['savings_usd']:.2f}</td>
+                                <td><span class="badge badge-secondary">Free</span></td>
+                            </tr>''' for s in parsed_sessions[:100]])}
+                        </tbody>
+                    </table>
                 </div>
-                <div class="kpi-value">{stats.get('avg_monthly_3m', 0.0):,.1f} <span style="font-size:18px;">mi/mo</span></div>
-                <div class="kpi-subtext">Last 90 days rolling monthly average</div>
-            </div>
 
-            <div class="kpi-card amber">
-                <div class="kpi-header">
-                    <span class="kpi-title">6-Month Driving Pace</span>
-                    <div class="kpi-icon">
-                        <svg viewBox="0 0 24 24"><path fill="#FFB300" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
-                    </div>
+                <div id="odometerTab" class="table-wrap" hidden>
+                    <table id="odometerTable">
+                        <thead>
+                            <tr>
+                                <th>Date / label</th>
+                                <th class="num">Reading</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join([f'''<tr>
+                                <td class="strong">{o['full_key']}</td>
+                                <td class="num">{o['val']:,.1f} mi</td>
+                                <td><span class="badge {'badge-outline' if o['is_baseline'] else 'badge-secondary'}">{'Monthly baseline' if o['is_baseline'] else ('Current' if o['is_current'] else 'Reading')}</span></td>
+                            </tr>''' for o in parsed_odo])}
+                        </tbody>
+                    </table>
                 </div>
-                <div class="kpi-value">{stats.get('avg_monthly_6m', 0.0):,.1f} <span style="font-size:18px;">mi/mo</span></div>
-                <div class="kpi-subtext">Last 180 days rolling monthly average</div>
             </div>
         </div>
 
-        <!-- CHARTS GRID -->
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-header">
-                    <div class="chart-title">Odometer Mileage Progression</div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="odoChart"></canvas>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <div class="chart-title">Monthly Miles Driven</div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="distChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="section-card" style="margin-bottom:28px;">
-            <div class="chart-header">
-                <div class="chart-title">Monthly Free Supercharging & Savings</div>
-            </div>
-            <div class="chart-container" style="height:280px;">
-                <canvas id="chargingChart"></canvas>
-            </div>
-        </div>
-
-        <div class="section-card" style="margin-bottom:28px;">
-            <div class="chart-header">
-                <div class="chart-title">Monthly Efficiency vs Temperature</div>
-            </div>
-            <div class="kpi-subtext" style="margin-bottom:12px;">
-                Energy: {efficiency_meta.get('energy_source', 'Supercharger kWh only')} &bull; Temperature: {efficiency_meta.get('temp_source', 'not configured')}
-            </div>
-            <div class="chart-container" style="height:300px;">
-                <canvas id="efficiencyChart"></canvas>
-            </div>
-        </div>
-
-        <!-- DATA TABLES SECTION -->
-        <div class="section-card">
-            <div class="table-controls">
-                <div class="tabs">
-                    <button class="tab-btn active" onclick="switchTab('sessions')">Supercharging Sessions ({len(parsed_sessions)})</button>
-                    <button class="tab-btn" onclick="switchTab('odometer')">Odometer Log ({len(parsed_odo)})</button>
-                </div>
-                <div class="search-box">
-                    <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                    <input type="text" id="searchInput" placeholder="Search sessions or dates..." onkeyup="filterTables()">
-                </div>
-            </div>
-
-            <!-- SESSIONS TABLE -->
-            <div id="sessionsTab" class="table-wrapper">
-                <table id="sessionsTable">
-                    <thead>
-                        <tr>
-                            <th>Date / Time</th>
-                            <th>Location / Station</th>
-                            <th>Energy Added</th>
-                            <th>Session Rate</th>
-                            <th>Monetary Savings</th>
-                            <th>Pricing Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join([f'''<tr>
-                            <td style="font-weight:500;">{s['date_formatted']}</td>
-                            <td>{s['site']}</td>
-                            <td><strong>{s['energy_kwh']}</strong> kWh</td>
-                            <td>${s['rate_usd']:.3f} / kWh</td>
-                            <td style="color:var(--accent-green); font-weight:600;">+${s['savings_usd']:.2f}</td>
-                            <td><span class="badge badge-free">FREE (NO CHARGE)</span></td>
-                        </tr>''' for s in parsed_sessions[:100]])}
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- ODOMETER TABLE -->
-            <div id="odometerTab" class="table-wrapper" style="display:none;">
-                <table id="odometerTable">
-                    <thead>
-                        <tr>
-                            <th>Date / Label</th>
-                            <th>Odometer Reading</th>
-                            <th>Entry Type</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join([f'''<tr>
-                            <td style="font-weight:500;">{o['full_key']}</td>
-                            <td><strong>{o['val']:,.2f}</strong> mi</td>
-                            <td>
-                                <span class="badge {'badge-raw' if not o['is_baseline'] else 'badge-baseline'}">
-                                    {'ESTIMATED MONTHLY BASELINE' if o['is_baseline'] else ('CURRENT READING' if o['is_current'] else 'RAW READING')}
-                                </span>
-                            </td>
-                        </tr>''' for o in parsed_odo])}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- FOOTER -->
-        <footer>
-            Tesla Fleet Logger Dashboard &bull; Generated cleanly without sensitive credentials or secret keys.
-        </footer>
+        <footer>Tesla Fleet Logger &middot; Generated without credentials or secret keys.</footer>
     </div>
 
-    <!-- JAVASCRIPT FOR CHARTS & INTERACTIVITY -->
     <script>
-        // Data Injection from Python Generator
         const rawOdoData = {json_raw_points};
         const baselineOdoData = {json_baseline_points};
         const monthLabels = {json_month_labels};
@@ -744,229 +454,125 @@ def generate_dashboard_html(vehicle_info, odometer_history, sessions, stats, out
         const monthSavings = {json_month_savings};
         const distLabels = {json_dist_labels};
         const distValues = {json_dist_values};
-
-        // 1. ODOMETER LINE CHART
-        const ctxOdo = document.getElementById('odoChart').getContext('2d');
-        new Chart(ctxOdo, {{
-            type: 'line',
-            data: {{
-                datasets: [
-                    {{
-                        label: 'Raw & Current Readings',
-                        data: rawOdoData,
-                        borderColor: '#E82127',
-                        backgroundColor: 'rgba(232, 33, 39, 0.1)',
-                        pointBackgroundColor: '#E82127',
-                        pointRadius: 5,
-                        pointHoverRadius: 8,
-                        tension: 0.2,
-                        fill: true
-                    }},
-                    {{
-                        label: '1st-of-Month Baselines',
-                        data: baselineOdoData,
-                        borderColor: '#00F0FF',
-                        backgroundColor: 'transparent',
-                        pointBackgroundColor: '#00F0FF',
-                        pointRadius: 4,
-                        borderDash: [5, 5],
-                        tension: 0.2
-                    }}
-                ]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{
-                    legend: {{ labels: {{ color: '#F3F4F6', font: {{ family: 'Inter' }} }} }}
-                }},
-                scales: {{
-                    x: {{
-                        type: 'category',
-                        labels: {json.dumps(all_dates)},
-                        ticks: {{ color: '#9CA3AF', maxTicksLimit: 8 }},
-                        grid: {{ color: 'rgba(255,255,255,0.05)' }}
-                    }},
-                    y: {{
-                        ticks: {{ color: '#9CA3AF' }},
-                        grid: {{ color: 'rgba(255,255,255,0.05)' }}
-                    }}
-                }}
-            }}
-        }});
-
-        // 2. MONTHLY DISTANCE BAR CHART
-        const ctxDist = document.getElementById('distChart').getContext('2d');
-        new Chart(ctxDist, {{
-            type: 'bar',
-            data: {{
-                labels: distLabels,
-                datasets: [{{
-                    label: 'Miles Driven',
-                    data: distValues,
-                    backgroundColor: 'rgba(0, 240, 255, 0.4)',
-                    borderColor: '#00F0FF',
-                    borderWidth: 1,
-                    borderRadius: 6
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{ legend: {{ display: false }} }},
-                scales: {{
-                    x: {{ ticks: {{ color: '#9CA3AF' }}, grid: {{ display: false }} }},
-                    y: {{ ticks: {{ color: '#9CA3AF' }}, grid: {{ color: 'rgba(255,255,255,0.05)' }} }}
-                }}
-            }}
-        }});
-
-        // 3. MONTHLY CHARGING DUAL CHART
-        const ctxCharge = document.getElementById('chargingChart').getContext('2d');
-        new Chart(ctxCharge, {{
-            type: 'bar',
-            data: {{
-                labels: monthLabels,
-                datasets: [
-                    {{
-                        type: 'bar',
-                        label: 'Energy Added (kWh)',
-                        data: monthKwh,
-                        backgroundColor: 'rgba(232, 33, 39, 0.5)',
-                        borderColor: '#E82127',
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        yAxisID: 'y'
-                    }},
-                    {{
-                        type: 'line',
-                        label: 'Monetary Savings ($)',
-                        data: monthSavings,
-                        borderColor: '#00E676',
-                        backgroundColor: '#00E676',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        yAxisID: 'y1'
-                    }}
-                ]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{ legend: {{ labels: {{ color: '#F3F4F6' }} }} }},
-                scales: {{
-                    x: {{ ticks: {{ color: '#9CA3AF' }}, grid: {{ display: false }} }},
-                    y: {{
-                        type: 'linear',
-                        position: 'left',
-                        ticks: {{ color: '#9CA3AF' }},
-                        grid: {{ color: 'rgba(255,255,255,0.05)' }}
-                    }},
-                    y1: {{
-                        type: 'linear',
-                        position: 'right',
-                        ticks: {{ color: '#00E676' }},
-                        grid: {{ display: false }}
-                    }}
-                }}
-            }}
-        }});
-
-        // 4. MONTHLY EFFICIENCY VS TEMPERATURE
         const efficiencyRows = {json_efficiency};
-        const ctxEff = document.getElementById('efficiencyChart').getContext('2d');
-        new Chart(ctxEff, {{
-            type: 'bar',
-            data: {{
-                labels: efficiencyRows.map(r => r.label),
-                datasets: [
-                    {{
-                        type: 'bar',
-                        label: 'Efficiency (mi/kWh)',
-                        data: efficiencyRows.map(r => r.mi_per_kwh),
-                        backgroundColor: efficiencyRows.map(r => r.flag ? 'rgba(156, 163, 175, 0.35)' : 'rgba(0, 230, 118, 0.5)'),
-                        borderColor: efficiencyRows.map(r => r.flag ? '#9CA3AF' : '#00E676'),
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        order: 2,
-                        yAxisID: 'y'
-                    }},
-                    {{
-                        type: 'line',
-                        label: 'Avg Driving-Hours Temp (°F)',
-                        order: 1,
-                        data: efficiencyRows.map(r => r.temp_f),
-                        borderColor: '#FFB300',
-                        backgroundColor: '#FFB300',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        tension: 0.3,
-                        spanGaps: true,
-                        yAxisID: 'y1'
-                    }}
-                ]
-            }},
+
+        // Pull shadcn theme tokens so charts follow light/dark mode.
+        const css = getComputedStyle(document.documentElement);
+        const token = name => css.getPropertyValue(name).trim();
+        const C = {{
+            fg: token('--foreground'), muted: token('--muted-foreground'), border: token('--border'),
+            popover: token('--popover'), c1: token('--chart-1'), c2: token('--chart-2'),
+            c3: token('--chart-3'), flagged: token('--chart-flagged'),
+        }};
+        matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => location.reload());
+
+        Chart.defaults.font.family = "'Geist', ui-sans-serif, system-ui, sans-serif";
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = C.muted;
+        Chart.defaults.borderColor = C.border;
+        Chart.defaults.plugins.legend.display = false;
+        Object.assign(Chart.defaults.plugins.tooltip, {{
+            backgroundColor: C.popover, titleColor: C.fg, bodyColor: C.fg, footerColor: C.muted,
+            borderColor: C.border, borderWidth: 1, cornerRadius: 8, padding: 10,
+            boxPadding: 4, usePointStyle: true, titleFont: {{ weight: '600' }},
+        }});
+        Chart.defaults.interaction = {{ mode: 'index', intersect: false }};
+
+        const xAxis = {{ grid: {{ display: false }}, border: {{ display: false }}, ticks: {{ maxRotation: 0, autoSkipPadding: 16 }} }};
+        const yAxis = extra => Object.assign({{ border: {{ display: false }}, grid: {{ color: C.border }}, ticks: {{ maxTicksLimit: 5 }} }}, extra || {{}});
+        const barStyle = color => ({{ backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 40 }});
+        const fmt = n => n == null ? '—' : n.toLocaleString(undefined, {{ maximumFractionDigits: 1 }});
+
+        new Chart(document.getElementById('odoChart'), {{
+            type: 'line',
+            data: {{ datasets: [
+                {{ label: 'Reading', data: rawOdoData, borderColor: C.c1, backgroundColor: C.c1,
+                   borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.2 }},
+                {{ label: 'Monthly baseline', data: baselineOdoData, borderColor: C.c2, backgroundColor: C.c2,
+                   borderWidth: 2, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 5, tension: 0.2 }},
+            ] }},
             options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{
-                    legend: {{ labels: {{ color: '#F3F4F6' }} }},
-                    tooltip: {{
-                        callbacks: {{
-                            afterBody: (items) => {{
-                                const r = efficiencyRows[items[0].dataIndex];
-                                const lines = [`Miles: ${{r.miles}}`, `Supercharger: ${{r.supercharger_kwh}} kWh`];
-                                if (r.home_kwh !== null) lines.push(`Home: ${{r.home_kwh}} kWh`);
-                                if (r.flag) lines.push(`Note: ${{r.flag}}`);
-                                return lines;
-                            }}
-                        }}
-                    }}
-                }},
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{ tooltip: {{ callbacks: {{ label: c => ` ${{c.dataset.label}}: ${{fmt(c.parsed.y)}} mi` }} }} }},
                 scales: {{
-                    x: {{ ticks: {{ color: '#9CA3AF' }}, grid: {{ display: false }} }},
-                    y: {{
-                        type: 'linear',
-                        position: 'left',
-                        beginAtZero: true,
-                        title: {{ display: true, text: 'mi/kWh', color: '#00E676' }},
-                        ticks: {{ color: '#9CA3AF' }},
-                        grid: {{ color: 'rgba(255,255,255,0.05)' }}
-                    }},
-                    y1: {{
-                        type: 'linear',
-                        position: 'right',
-                        title: {{ display: true, text: '°F', color: '#FFB300' }},
-                        ticks: {{ color: '#FFB300' }},
-                        grid: {{ display: false }}
-                    }}
-                }}
-            }}
+                    x: Object.assign({{ type: 'category', labels: {json.dumps(all_dates)} }}, xAxis, {{ ticks: {{ maxTicksLimit: 6, maxRotation: 0, callback: function(v) {{ return String(this.getLabelForValue(v)).slice(0, 10); }} }} }}),
+                    y: yAxis({{ ticks: {{ maxTicksLimit: 5, callback: v => v.toLocaleString() }} }}),
+                }},
+            }},
         }});
 
-        // Tab Switching
-        function switchTab(tabName) {{
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            if (tabName === 'sessions') {{
-                document.getElementById('sessionsTab').style.display = 'block';
-                document.getElementById('odometerTab').style.display = 'none';
-                event.target.classList.add('active');
-            }} else {{
-                document.getElementById('sessionsTab').style.display = 'none';
-                document.getElementById('odometerTab').style.display = 'block';
-                event.target.classList.add('active');
-            }}
-        }}
+        new Chart(document.getElementById('distChart'), {{
+            type: 'bar',
+            data: {{ labels: distLabels, datasets: [Object.assign({{ label: 'Miles', data: distValues }}, barStyle(C.c1))] }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{ tooltip: {{ callbacks: {{ label: c => ` ${{fmt(c.parsed.y)}} mi` }} }} }},
+                scales: {{ x: xAxis, y: yAxis() }},
+            }},
+        }});
 
-        // Search Filter
+        new Chart(document.getElementById('chargingChart'), {{
+            type: 'bar',
+            data: {{ labels: monthLabels, datasets: [Object.assign({{ label: 'Energy', data: monthKwh }}, barStyle(C.c1))] }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{ tooltip: {{ callbacks: {{
+                    label: c => ` Energy: ${{fmt(c.parsed.y)}} kWh`,
+                    footer: items => `Saved $${{monthSavings[items[0].dataIndex].toFixed(2)}}`,
+                }} }} }},
+                scales: {{ x: xAxis, y: yAxis() }},
+            }},
+        }});
+
+        // Efficiency and temperature share the month axis but get separate y-scales (no dual axis).
+        const effLabels = efficiencyRows.map(r => r.label);
+        const effTooltip = {{ callbacks: {{
+            afterBody: items => {{
+                const r = efficiencyRows[items[0].dataIndex];
+                const lines = [`Temperature: ${{r.temp_f == null ? '—' : r.temp_f + ' °F'}}`, `Miles: ${{fmt(r.miles)}}`, `Supercharger: ${{fmt(r.supercharger_kwh)}} kWh`];
+                if (r.home_kwh !== null) lines.push(`Home: ${{fmt(r.home_kwh)}} kWh`);
+                if (r.flag) lines.push(`Note: ${{r.flag}}`);
+                return lines;
+            }},
+        }} }};
+        new Chart(document.getElementById('efficiencyChart'), {{
+            type: 'bar',
+            data: {{ labels: effLabels, datasets: [Object.assign({{
+                label: 'Efficiency', data: efficiencyRows.map(r => r.mi_per_kwh),
+            }}, barStyle(efficiencyRows.map(r => r.flag ? C.flagged : C.c2)))] }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{ tooltip: Object.assign({{}}, effTooltip, {{ callbacks: Object.assign({{}}, effTooltip.callbacks, {{ label: c => ` Efficiency: ${{fmt(c.parsed.y)}} mi/kWh` }}) }}) }},
+                scales: {{ x: xAxis, y: yAxis({{ beginAtZero: true }}) }},
+            }},
+        }});
+        new Chart(document.getElementById('tempChart'), {{
+            type: 'line',
+            data: {{ labels: effLabels, datasets: [{{
+                label: 'Temperature', data: efficiencyRows.map(r => r.temp_f),
+                borderColor: C.c3, backgroundColor: C.c3, borderWidth: 2,
+                pointRadius: 0, pointHoverRadius: 5, tension: 0.3, spanGaps: true,
+            }}] }},
+            options: {{
+                responsive: true, maintainAspectRatio: false,
+                plugins: {{ tooltip: {{ callbacks: {{ label: c => ` ${{fmt(c.parsed.y)}} °F` }} }} }},
+                scales: {{ x: xAxis, y: yAxis({{ ticks: {{ maxTicksLimit: 4 }} }}) }},
+            }},
+        }});
+
+        document.querySelectorAll('.tabs-trigger').forEach(btn => btn.addEventListener('click', () => {{
+            document.querySelectorAll('.tabs-trigger').forEach(b => {{
+                const on = b === btn;
+                b.setAttribute('aria-selected', on);
+                document.getElementById(b.dataset.tab).hidden = !on;
+            }});
+        }}));
+
         function filterTables() {{
-            const input = document.getElementById('searchInput').value.toLowerCase();
-            ['sessionsTable', 'odometerTable'].forEach(tableId => {{
-                const table = document.getElementById(tableId);
-                const rows = table.getElementsByTagName('tr');
-                for (let i = 1; i < rows.length; i++) {{
-                    const text = rows[i].innerText.toLowerCase();
-                    rows[i].style.display = text.includes(input) ? '' : 'none';
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            ['sessionsTable', 'odometerTable'].forEach(id => {{
+                for (const row of document.getElementById(id).tBodies[0].rows) {{
+                    row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
                 }}
             }});
         }}

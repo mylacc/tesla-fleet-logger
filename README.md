@@ -134,6 +134,9 @@ The dashboard plots monthly **mi/kWh** (miles from the odometer baselines divide
 
 ---
 
+### 6. Hosting the Dashboard on a NAS (Docker)
+`docker/` holds a Compose project that serves `index.html` and `dashboard.html` from `TESLA_DATA_DIR` on port 8095 with a small Python server (`docker/serve.py`). Every other file in that folder (tokens, `.env`, history JSON) returns 404. Edit the volume path in `docker/docker-compose.yml` to where `TESLA_DATA_DIR` lives on the NAS, then create a project from that folder (on Synology: Container Manager -> Project -> Create).
+
 ## Log Files & Cache
 
 All data files and generated dashboards are saved inside the directory specified by `TESLA_DATA_DIR` in your `.env` (defaults to the local project directory if not specified):

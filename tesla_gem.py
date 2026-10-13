@@ -36,7 +36,9 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # --- CONFIGURATION & PATHS ---
 TOKEN_FILE = 'tesla_token.json'
-KEYCHAIN_SERVICE = 'TeslaFleetAPI'
+# Own Keychain entry: the solar pipeline stores its energy-only token under
+# TeslaFleetAPI/auth_token, which would otherwise overwrite this vehicle token.
+KEYCHAIN_SERVICE = os.getenv('TESLA_KEYCHAIN_SERVICE', 'TeslaFleetLogger')
 KEYCHAIN_ACCOUNT = 'auth_token'
 DATA_DIR = os.getenv('TESLA_DATA_DIR', '.')
 if DATA_DIR != '.':
@@ -137,7 +139,11 @@ def wake_vehicle(oauth, vehicle_id):
 
     while retries < max_retries:
         response = oauth.get(f'{BASE_URL.rstrip("/")}/api/1/vehicles/{vehicle_id}')
-        state = response.json().get('response', {}).get('state')
+        body = response.json()
+        if not body.get('response'):
+            print(f"Vehicle state request failed: {body.get('error') or response.status_code}")
+            return False
+        state = body['response'].get('state')
         
         if state == 'online':
             print("Vehicle is online and ready.")
@@ -208,7 +214,7 @@ def main():
         if not products.get('response'):
             print("No vehicles found.")
             print(f"DEBUG: Raw products response from API:\n{json.dumps(products, indent=2)}")
-            return
+            sys.exit(1)
 
         vehicle = products['response'][0]
         vehicle_id = str(vehicle['id'])
@@ -227,7 +233,7 @@ def main():
 
         # WAKE UP THE CAR
         if not wake_vehicle(oauth, vehicle_id):
-            return # Stop if car won't wake
+            sys.exit(1)  # Stop if car won't wake
 
         # Now that car is online, get all data
         charge_resp = oauth.post(f'{BASE_URL.rstrip("/")}/api/1/vehicles/{vehicle_id}/charge_history')
@@ -666,6 +672,7 @@ def main():
             print("Cleared expired token from system keychain. Please run '.venv/bin/python tesla_gem.py' again to log in and re-authenticate.")
         else:
             print(f"An error occurred: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
