@@ -27,7 +27,9 @@ def load_env(path='.env'):
 def tail(path, lines=40):
     try:
         with open(path, errors='replace') as f:
-            return ''.join(f.readlines()[-lines:])
+            # Keep the VIN and vehicle ID out of mail that passes through a third party.
+            kept = [l for l in f.readlines() if not l.startswith(('VIN:', 'ID:'))]
+            return ''.join(kept[-lines:])
     except OSError as e:
         return f'(could not read {path}: {e})'
 
@@ -64,7 +66,10 @@ def main():
             client = smtplib.SMTP_SSL(host, port, timeout=30)
         else:
             client = smtplib.SMTP(host, port, timeout=30)
-            client.starttls()
+            client.ehlo()
+            # The LAN mail relay may not offer TLS; public providers always do.
+            if client.has_extn('starttls'):
+                client.starttls()
         with client:
             if user:
                 client.login(user, password)
