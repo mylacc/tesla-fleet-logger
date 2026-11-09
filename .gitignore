@@ -53,3 +53,7 @@ odometer_history.json
 vehicle_snapshots.json
 wall_connector_history.json
 monthly_weather_cache.json
+
+# Claude Code per-user local files (can hold tokens approved with "don't ask again")
+.claude/settings.local.json
+CLAUDE.local.md
